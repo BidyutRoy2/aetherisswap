@@ -71,3 +71,17 @@
 - **Sell side not yet possible:** the curve holds no WETH (`quoteReserve` 0), so a sell quote reverts until buys have happened. Normal bonding-curve behaviour, not a bug.
 - **Canary direct-buy question (research only, NOT implemented):** the curve contract (`segmentedBondingCurveV3Abi`) directly exposes `swapExactInput`/`swapExactOutput` — anyone can call the canary curve without the SDK. Doing that in the app would skip the reviewed-factory authenticity check, so a spoofed curve could consume a WETH approval without delivering tokens. No bypass built; needs the user's explicit approval first.
 - **Still needs the user's wallet:** the actual Swap click on the live site (ETH → $VTRS, 0.00001, after Vercel redeploys). No transaction was signed or sent by the agent; all probes were read-only.
+
+## v0.1.9 — partial-fill guard + plan check before wrap (2026-11-18)
+
+- **Partial-fill signal (proven live):** the ALC quote returns `amountLeft`; `amountLeft > 0` means the curve cannot fill the entered amount in one swap. `LiveQuote` now carries `amountLeft` + `filledAmountIn`; `partialFillInfo()` derives the max full-fill from the live quote (never a per-token constant). At 0.0001 WETH the $VTRS quote fills only ≈0.0000101 WETH (`amountLeft` 89898989898989); at 0.00001 WETH it fully fills and the plan accepts.
+- **Guard:** a partial-fill quote shows an amber warning and disables Swap ("Too large for one full fill — max ≈ …"). For ETH pay, `assertSwapPlannable()` runs the plan check *before* wrapping, so a doomed swap never sends a wrap tx ("Swap cannot proceed, so nothing was wrapped").
+
+## v0.1.10 — deployed version visible (2026-11-18)
+
+- `APP_VERSION` (from `package.json`, single source of truth) is shown in the header ribbon and footer, so a live check can confirm which build is serving instead of trusting the "DEPLOYMENT VERIFIED" banner.
+
+## v0.1.11 — tiny max-fill amounts no longer truncate to "0" (2026-11-18)
+
+- **Bug:** after the user's $VTRS buy moved the curve, the live max full-fill fell to 101010101100 wei (≈0.000000101 WETH) and the warning rendered as "can only fill ≈ 0 WETH… Enter 0 WETH or less" — `formatUnitsAmount` keeps only 6 decimal places. The warning logic itself (`amountLeft > 0`) was correct; only the display was wrong.
+- **Fix:** new `formatUnitsAmountPrecise()` (keeps up to 10 significant fractional digits, truncation-only so a displayed max never exceeds the true fillable amount) + `isTinyUnitsAmount()` (below 0.000001 units). The warning and the disabled-Swap reason use the precise value; for a max below 0.000001 the warning also shows the raw units in parentheses, e.g. "can only fill ≈ 0.0000001010101011 WETH (101010101100 raw units)". The "You receive" quote and minimum-received displays use the same precise formatter (identical output for normal amounts — verified: 9874.998527 AIV4C, 5000 $VTRS, 0.00059 WETH all unchanged).

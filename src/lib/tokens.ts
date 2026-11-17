@@ -115,3 +115,36 @@ export function formatUnitsAmount(raw: bigint, decimals: number, maxDp = 6): str
   const fracStr = frac.toString().padStart(decimals, "0").slice(0, maxDp).replace(/0+$/, "");
   return `${neg ? "-" : ""}${whole.toString()}${fracStr ? `.${fracStr}` : ""}`;
 }
+
+/**
+ * Precise version of formatUnitsAmount: keeps up to `maxSig` significant
+ * digits of the fractional part (default 10), so a tiny non-zero amount
+ * never truncates to "0" — e.g. 101010101100 wei of WETH (18 decimals)
+ * renders as "0.0000001010101011", where formatUnitsAmount gives "0".
+ * Like formatUnitsAmount it only ever truncates (never rounds up), so a
+ * displayed max-fill amount never exceeds the true fillable amount.
+ */
+export function formatUnitsAmountPrecise(raw: bigint, decimals: number, maxSig = 10): string {
+  const neg = raw < 0n;
+  const abs = neg ? -raw : raw;
+  const base = 10n ** BigInt(decimals);
+  const whole = abs / base;
+  const frac = abs % base;
+  if (frac === 0n) return `${neg ? "-" : ""}${whole.toString()}`;
+  const fracFull = frac.toString().padStart(decimals, "0");
+  const firstSig = fracFull.search(/[1-9]/);
+  const kept = fracFull
+    .slice(0, Math.min(fracFull.length, firstSig + maxSig))
+    .replace(/0+$/, "");
+  return `${neg ? "-" : ""}${whole.toString()}${kept ? `.${kept}` : ""}`;
+}
+
+/**
+ * True when a non-zero amount is below 0.000001 token units — small enough
+ * that showing its raw units next to the decimal is worth the space.
+ */
+export function isTinyUnitsAmount(raw: bigint, decimals: number): boolean {
+  if (raw === 0n || decimals <= 6) return false;
+  const abs = raw < 0n ? -raw : raw;
+  return abs < 10n ** BigInt(decimals - 6);
+}

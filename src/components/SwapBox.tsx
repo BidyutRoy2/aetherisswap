@@ -19,7 +19,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { assertSwapPlannable, describeNoRoute, discoverCurveForToken, executeQuotedSwap, fetchLiveQuote, getPublicClient as getAmmoraPublicClient, partialFillInfo, verifyCurveForToken, type LiveQuote } from "@/lib/ammora";
 import { explorerTxUrl, GIWA_SEPOLIA_CHAIN_ID, giwaSepolia } from "@/lib/chain";
-import { AIV4C_TOKEN, formatUnitsAmount, KNOWN_TOKENS, NATIVE_ETH_TOKEN, shortAddress, WETH_ADDRESS, WETH_TOKEN, type SwapToken } from "@/lib/tokens";
+import { AIV4C_TOKEN, formatUnitsAmount, formatUnitsAmountPrecise, isTinyUnitsAmount, KNOWN_TOKENS, NATIVE_ETH_TOKEN, shortAddress, WETH_ADDRESS, WETH_TOKEN, type SwapToken } from "@/lib/tokens";
 import { getDataApiClient } from "@/lib/ammora";
 
 type SwapPhase =
@@ -172,15 +172,21 @@ export function SwapBox() {
   // allowPartialFill: false) will refuse it. The max that CAN fill is the
   // quote's filled amount — derived live per pair, never a per-token
   // constant, so this guard works for any token, not just $VTRS.
-  // (formatUnitsAmount truncates, so the displayed max never exceeds the
-  // true fillable amount — entering it will fully fill.)
+  // (formatUnitsAmountPrecise truncates, so the displayed max never exceeds
+  // the true fillable amount — entering it will fully fill. It keeps enough
+  // significant digits that a tiny max never renders as "0"; for a max below
+  // 0.000001 the raw units are shown too, so the amount is unambiguous.)
   const partialFill = useMemo(() => (quote ? partialFillInfo(quote) : null), [quote]);
   const isPartialFill = partialFill !== null;
   const partialFillMaxText = partialFill
-    ? `${formatUnitsAmount(partialFill.maxFullFill, partialFill.payToken.decimals)} ${partialFill.payToken.symbol}`
+    ? `${formatUnitsAmountPrecise(partialFill.maxFullFill, partialFill.payToken.decimals)} ${partialFill.payToken.symbol}`
+    : "";
+  const partialFillMaxRaw = partialFill &&
+    isTinyUnitsAmount(partialFill.maxFullFill, partialFill.payToken.decimals)
+    ? ` (${partialFill.maxFullFill.toString()} raw units)`
     : "";
   const partialFillMessage = partialFill
-    ? `This amount is too large for one full fill — the ${partialFill.receiveToken.symbol} curve can only fill ≈ ${partialFillMaxText} in a single swap, and the swap refuses partial fills. Enter ${partialFillMaxText} or less.${isEthIn ? " (Same amount in ETH — it wraps 1:1.)" : ""}`
+    ? `This amount is too large for one full fill — the ${partialFill.receiveToken.symbol} curve can only fill ≈ ${partialFillMaxText}${partialFillMaxRaw} in a single swap, and the swap refuses partial fills. Enter ${partialFillMaxText} or less.${isEthIn ? " (Same amount in ETH — it wraps 1:1.)" : ""}`
     : null;
 
   const flip = useCallback(() => {
@@ -512,7 +518,7 @@ export function SwapBox() {
         </span>
         <span className="field mt-1 flex items-center gap-2 px-3 py-2.5">
           <span className="mono-num min-w-0 flex-1 truncate text-lg text-[#eef4ef]">
-            {quote ? formatUnitsAmount(quote.expectedOut, tokenOut?.decimals ?? 18) : phase === "quoting" ? "Quoting…" : "—"}
+            {quote ? formatUnitsAmountPrecise(quote.expectedOut, tokenOut?.decimals ?? 18) : phase === "quoting" ? "Quoting…" : "—"}
           </span>
           <select
             value={tokenOut?.address ?? ""}
@@ -542,7 +548,7 @@ export function SwapBox() {
         <dl className="mt-3 space-y-1.5 rounded-xl bg-[#0a0f0d] px-3 py-2.5 text-xs mono-num text-[#9fb3a8]">
           <div className="flex justify-between gap-2">
             <dt>Minimum received</dt>
-            <dd className="text-[#eef4ef]">{formatUnitsAmount(quote.minimumOut, tokenOut.decimals)} {tokenOut.symbol}</dd>
+            <dd className="text-[#eef4ef]">{formatUnitsAmountPrecise(quote.minimumOut, tokenOut.decimals)} {tokenOut.symbol}</dd>
           </div>
           <div className="flex justify-between gap-2">
             <dt>Price impact</dt>
