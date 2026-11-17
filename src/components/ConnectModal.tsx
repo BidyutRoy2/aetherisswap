@@ -88,6 +88,17 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
     return () => window.removeEventListener("keydown", onKey);
   }, [open, onClose]);
 
+  // Lock page scroll while the modal is open, so the panel itself
+  // (not the page behind it) is the only thing that can scroll.
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+
   const rows: WalletRow[] = useMemo(() => {
     if (!open) return [];
     const flags = ethereumFlags();
@@ -201,7 +212,7 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4"
       role="dialog"
       aria-modal="true"
       aria-label="Connect a wallet"
@@ -210,10 +221,10 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
         type="button"
         aria-label="Close"
         onClick={onClose}
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm cursor-default"
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm cursor-default"
       />
-      <div className="relative w-full max-w-md rounded-t-2xl sm:rounded-2xl border border-[#1e2d26] bg-[#0d1512] p-5 shadow-2xl">
-        <div className="flex items-start justify-between gap-3">
+      <div className="relative my-auto flex w-full max-w-md max-h-[85dvh] flex-col overflow-hidden rounded-2xl border border-[#1e2d26] bg-[#0d1512] p-5 shadow-2xl">
+        <div className="flex shrink-0 items-start justify-between gap-3">
           <div>
             <h2 className="font-display text-2xl font-semibold">Connect a Wallet</h2>
             <p className="mt-1 text-xs text-[#9fb3a8]">
@@ -230,7 +241,7 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
           </button>
         </div>
 
-        <div className="mt-4 flex flex-col gap-2">
+        <div className="mt-4 flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto pr-1">
           {rows.map((row) => (
             <div
               key={row.key}
@@ -273,12 +284,12 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
         </div>
 
         {(connectError || error) && (
-          <p role="alert" className="mt-3 break-words rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2.5 text-sm text-red-300">
+          <p role="alert" className="mt-3 shrink-0 break-words rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2.5 text-sm text-red-300">
             {connectError ?? error?.message ?? "Connection failed."}
           </p>
         )}
 
-        <p className="mt-4 text-[11px] leading-relaxed text-[#9fb3a8]">
+        <p className="mt-4 shrink-0 text-[11px] leading-relaxed text-[#9fb3a8]">
           No WalletConnect project ID is used — this list comes straight from the wallets
           in your browser. If your wallet is not listed, install it first, then reopen
           this modal.
