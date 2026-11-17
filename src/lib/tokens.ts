@@ -6,7 +6,7 @@ export interface SwapToken {
   name: string;
   decimals: number;
   /** Where the token came from: the reviewed GIWA deployment, or the Data API. */
-  source: "giwa-weth" | "ammora-launch" | "discovered-pool";
+  source: "giwa-weth" | "ammora-launch" | "discovered-pool" | "native-eth";
   /** Launch curve / pool address when known, for the Tokens page. */
   curve?: Address;
   status?: string;
@@ -49,7 +49,23 @@ export const AIV4C_TOKEN: SwapToken = {
 };
 
 /**
- * Native ETH is NOT a swap token here: gas and spend are separate balances.
+ * Native ETH is the pay-only token: gas and spend are separate balances,
+ * so ETH itself is never a swap output — it is wrapped 1:1 into WETH
+ * (deposit()) first, then the normal WETH swap runs. Added as a pay token
+ * in v0.1.7 because users arrive with ETH and WETH 0 and were stuck with
+ * no obvious path to WETH. Quote: WETH quote for the same amount (1:1).
+ */
+export const NATIVE_ETH_ADDRESS = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeEEEeE" as Address;
+
+export const NATIVE_ETH_TOKEN: SwapToken = {
+  address: NATIVE_ETH_ADDRESS,
+  symbol: "ETH",
+  name: "Ether (wraps to WETH on swap)",
+  decimals: 18,
+  source: "native-eth",
+};
+
+/** Native ETH is NOT a swap token here: gas and spend are separate balances.
  * ETH pays gas; WETH is the ERC-20 spend balance. The UI shows both and only
  * offers wrapping (WETH deposit()) when the user explicitly asks.
  */

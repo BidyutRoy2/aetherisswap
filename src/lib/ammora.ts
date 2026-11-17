@@ -2,10 +2,12 @@ import {
   ALCClient,
   AmmoraDataApiClient,
   AmmoraRouteClient,
+  ammoraLaunchFactoryV4Abi,
+  giwaSepoliaAutoRouteAddresses,
   giwaSepoliaAutoRouteRuntimeHashes,
   type AmmoraRouteQuote,
 } from "@ammora-protocol/sdk";
-import { createPublicClient, erc20Abi, http, keccak256, type Address, type PublicClient, type WalletClient } from "viem";
+import { createPublicClient, erc20Abi, http, keccak256, zeroAddress, type Address, type PublicClient, type WalletClient } from "viem";
 import {
   AMMORA_DATA_API_URL,
   GIWA_RPC_URL,
@@ -25,6 +27,100 @@ export function getPublicClient(): PublicClient {
 /** Data API client (launches / indexer status). No key, no account. */
 export function getDataApiClient(): AmmoraDataApiClient {
   return new AmmoraDataApiClient(AMMORA_DATA_API_URL);
+}
+
+/** The reviewed auto-route launch factory on GIWA Sepolia (SDK-pinned). */
+export const LAUNCH_FACTORY_ADDRESS = giwaSepoliaAutoRouteAddresses.factory as Address;
+
+/**
+ * Find the ALC launch curve for a token, on-chain, via the reviewed launch
+ * factory's `curveForToken(token)` view (ammoraLaunchFactoryV4Abi).
+ * Returns null when the token has no curve on this factory (zero address)
+ * or the call fails. Validated live 2026-11-18: AIV4C returns its known
+ * curve 0x2C4e…, tAMM returns the zero address — tAMM is Ammora's Season 2
+ * campaign reward token ("tAmm Coin", minted by an EOA, not a launch), so
+ * it has no launch curve and no reviewed route.
+ */
+export async function findCurveOnChain(
+  publicClient: PublicClient,
+  tokenAddress: Address,
+): Promise<Address | null> {
+  try {
+    const curve = (await publicClient.readContract({
+      address: LAUNCH_FACTORY_ADDRESS,
+      abi: ammoraLaunchFactoryV4Abi,
+      functionName: "curveForToken",
+      args: [tokenAddress],
+    })) as Address;
+    return curve.toLowerCase() === zeroAddress.toLowerCase() ? null : curve;
+  } catch {
+    return null;
+  }
+}
+
+/** Check a pasted curve really belongs to a token (`tokenForCurve`). */
+export async function verifyCurveForToken(
+  publicClient: PublicClient,
+  curve: Address,
+  tokenAddress: Address,
+): Promise<boolean> {
+  try {
+    const token = (await publicClient.readContract({
+      address: LAUNCH_FACTORY_ADDRESS,
+      abi: ammoraLaunchFactoryV4Abi,
+      functionName: "tokenForCurve",
+      args: [curve],
+    })) as Address;
+    return token.toLowerCase() === tokenAddress.toLowerCase();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Discover a token's ALC curve: Data API `getLaunch` first (8s cap — the
+ * indexer may be unreachable), then the on-chain factory lookup. Returns
+ * the curve and where it came from, or nulls when no curve exists anywhere
+ * we can check. A null result is a real finding, not an error: the token
+ * can then only swap if a reviewed route exists for the pair.
+ */
+export async function discoverCurveForToken(
+  tokenAddress: Address,
+): Promise<{ curve: Address | null; via: "data-api" | "on-chain" | null }> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const launch = await getDataApiClient().getLaunch(91342n, tokenAddress, controller.signal);
+      const curve = (launch as unknown as Record<string, unknown>).curveAddress as Address | undefined;
+      if (curve && curve.toLowerCase() !== zeroAddress.toLowerCase()) {
+        return { curve, via: "data-api" };
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    // Indexer unreachable — fall through to the on-chain lookup.
+  }
+  const curve = await findCurveOnChain(getPublicClient(), tokenAddress);
+  return { curve, via: curve ? "on-chain" : null };
+}
+
+/**
+ * Honest no-route message: when neither side of a pair has a launch curve,
+ * the SDK's "no reviewed route" is not a temporary failure — the pair
+ * simply has no quotable path. Say so, including the campaign-token case.
+ */
+export function describeNoRoute(tokenIn: SwapToken, tokenOut: SwapToken, error: unknown): string {
+  const sdkMsg = error instanceof Error ? error.message.slice(0, 180) : "no reviewed exact-input route is currently available";
+  if (!tokenIn.curve && !tokenOut.curve) {
+    return (
+      `No live route for this pair: ${sdkMsg}. Neither token has an ALC launch curve on the reviewed factory, ` +
+      `so there is no quotable path — this can happen for campaign/reward tokens (e.g. tAMM, Ammora's Season 2 ` +
+      `points token) which are not launchpad tokens. Only pairs with a reviewed route or a launch curve can be quoted; no price is shown because none exists.`
+    );
+  }
+  return `No live route for this pair: ${sdkMsg}`;
 }
 
 export type AttestationState =

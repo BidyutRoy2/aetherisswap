@@ -53,3 +53,12 @@
 4. **Wallet test** — connect on the live site, wrap a little ETH → WETH if needed, quote WETH → AIV4C, and attempt the swap. Report the exact SDK message if it refuses; if the canary curve stays unplannable, try a newer launch token from the Tokens page.
 5. **X post** — from **@aetherisweb3** (the only usable account; @BidyutQuant and @0xAiExp are suspended): one original research-style post with a screenshot + the live link, then Verify X on the Ammora waitlist.
 6. **Submit** at ammora.org/waitlist#mission — Project name **AetherisSwap**, website link, X post link. (The submit button first opens a Connect Wallet dialog.)
+
+## v0.1.7 — tAMM route fix + ETH pay token (2026-11-18)
+
+- **tAMM verdict (probed live):** tAMM `0x10B3…B06` ("tAmm Coin", 6 decimals, 1B supply) is Ammora's Season 2 campaign reward token, minted by EOA `0xd83C…46ac` — not a launch token. `curveForToken(tAMM)` on the reviewed factory `0x3535…68fA` returns the zero address (same call returns the canary curve for AIV4C, so the method is validated); route quote WETH→tAMM fails "no reviewed exact-input route". No quotable path exists for tAMM via the SDK; the app now says so plainly.
+- **Curve discovery for custom tokens:** `discoverCurveForToken` (Data API `getLaunch` 8s cap, then on-chain `curveForToken` via `ammoraLaunchFactoryV4Abi`); optional pasted curve verified with `tokenForCurve`. Found curve is attached to the token so the ALC fallback can run.
+- **Data API mapping bug fixed:** `AmmoraLaunchSummary` names the token `address`, not `tokenAddress` — launches never populated before; SwapBox + Tokens page now read `address` first.
+- **ETH as pay token:** ETH wraps 1:1 to WETH first (explicit `giwaSepolia` chain, receipt awaited), then the normal WETH swap runs at the WETH quote. Wrap failure → swap never attempted; wrap-ok/swap-fail is reported as exactly that. Standalone Wrap row fixed the same way (explicit chain, explorer link, balance queries invalidated so numbers update without reload). WETH-balance-0 hint shown when a WETH amount is entered with 0 WETH.
+- **Data API still unreachable from this VM** (3× curl timeout, exit 28, 2026-11-18) — on-chain discovery is the path that works everywhere.
+- **Live swap still NOT proven end-to-end for any pair** — needs the user's wallet. ALC quote for AIV4C re-proven in the v0.1.7 probe (0.001 WETH → 987,499.86 AIV4C).

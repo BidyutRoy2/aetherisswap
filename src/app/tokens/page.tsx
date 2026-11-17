@@ -6,6 +6,7 @@ import { explorerAddressUrl, explorerTokenUrl } from "@/lib/chain";
 import { shortAddress } from "@/lib/tokens";
 
 interface LaunchRow {
+  address?: string;
   tokenAddress?: string;
   baseToken?: string;
   token?: string;
@@ -110,7 +111,8 @@ export default function TokensPage() {
             </thead>
             <tbody>
               {rows.map((row, i) => {
-                const token = row.tokenAddress ?? row.baseToken ?? row.token ?? "";
+                // SDK type AmmoraLaunchSummary names the token `address`.
+                const token = row.address ?? row.tokenAddress ?? row.baseToken ?? row.token ?? "";
                 const symbol = row.symbol ?? row.tokenSymbol ?? "—";
                 const curve = row.curveAddress ?? row.poolAddress ?? "";
                 return (

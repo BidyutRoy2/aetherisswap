@@ -91,6 +91,22 @@ Reward is a bonus draw for approved builders ($tAMM + SBT) — not guaranteed.
 - The Ammora Data API was unreachable from the build VM (connection timeouts
   on 2026-11-18); the Tokens/Activity pages handle that with an explicit
   error state and retry. Re-check after deploy.
+- **tAMM has no route and no curve — by design of the token, not the app.**
+  tAMM (`0x10B3…B06`, "tAmm Coin", 6 decimals, 1B supply) is Ammora's Season 2
+  campaign reward token, minted by an EOA — not a launchpad token. Verified
+  live 2026-11-18: the reviewed launch factory's `curveForToken(tAMM)` returns
+  the zero address (the same call returns the canary curve for AIV4C), and the
+  route client returns "no reviewed exact-input route" for WETH↔tAMM. The app
+  says so plainly instead of inventing a price. Custom-added tokens now get
+  their curve discovered automatically (Data API `getLaunch`, then on-chain
+  `curveForToken`; an optional curve address can be pasted and is verified
+  with `tokenForCurve`).
+- **ETH as a pay token (v0.1.7).** Paying with native ETH wraps it 1:1 to WETH
+  first (explicit GIWA Sepolia chain, receipt awaited) and only then swaps;
+  if the wrap fails the swap is never attempted, and the message says which
+  step failed. The standalone Wrap row does the same wrap and refreshes
+  balances without a reload. A WETH balance of 0 with a WETH amount entered
+  shows an explicit "wrap ETH → WETH first" hint.
 - `discoverPools` log scans are slow on the public RPC (a 500k-block window
   did not finish in ~150s, and 0 pools in the last 2,000 blocks); the app
   does not call it on load. Token discovery goes through the Data API, plus
