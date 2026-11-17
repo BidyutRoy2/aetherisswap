@@ -103,10 +103,32 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
   const rows: WalletRow[] = useMemo(() => {
     if (!open) return [];
     const flags = ethereumFlags();
-    const byId = (id: string) => connectors.find((c) => c.id === id);
-    const metaMaskConnector = byId("metaMask") ?? byId("io.metamask") ?? null;
-    const coinbaseConnector = byId("coinbaseWallet") ?? byId("com.coinbase.wallet") ?? null;
-    const injectedConnector = byId("injected") ?? null;
+    // Connector lookup must match by id, name, or rdns: wagmi 2.19 names
+    // its connectors "metaMaskSDK" / "coinbaseWalletSDK" (NOT "metaMask" /
+    // "coinbaseWallet"), and EIP-6963 discovery adds connectors whose id
+    // IS the rdns ("io.metamask", "com.coinbase.wallet"). The old code
+    // only looked up "metaMask"/"io.metamask" for one and
+    // "coinbaseWallet"/"com.coinbase.wallet" for the other, so both rows
+    // ended up with connector=null and clicking Connect wrongly said
+    // "not available in this browser" even though the wallet was
+    // detected. Prefer the direct EIP-6963 connector (talks straight to
+    // the extension) over the SDK one.
+    const findConnector = (ids: string[], name: string, rdns: string) =>
+      connectors.find((c) => ids.includes(c.id)) ??
+      connectors.find((c) => ((c as unknown as { rdns?: string[] }).rdns ?? []).includes(rdns)) ??
+      connectors.find((c) => c.name.toLowerCase() === name.toLowerCase()) ??
+      null;
+    const metaMaskConnector = findConnector(
+      ["io.metamask", "metaMaskSDK", "metaMask"],
+      "MetaMask",
+      "io.metamask",
+    );
+    const coinbaseConnector = findConnector(
+      ["com.coinbase.wallet", "coinbaseWalletSDK", "coinbaseWallet"],
+      "Coinbase Wallet",
+      "com.coinbase.wallet",
+    );
+    const injectedConnector = connectors.find((c) => c.id === "injected") ?? null;
 
     const metaMaskDetected =
       announced.some((p) => p.info.rdns === "io.metamask") || flags.isMetaMask;
@@ -142,6 +164,9 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
       if (coveredRdns.has(p.info.rdns)) continue;
       const match =
         connectors.find((c) => c.id === p.info.rdns) ??
+        connectors.find((c) =>
+          ((c as unknown as { rdns?: string[] }).rdns ?? []).includes(p.info.rdns),
+        ) ??
         connectors.find((c) => c.name.toLowerCase() === p.info.name.toLowerCase()) ??
         injectedConnector;
       out.push({
@@ -158,7 +183,7 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
     // Any other wagmi connector not already represented (wagmi's own
     // discovery can surface wallets before the announce event lands).
     for (const c of connectors) {
-      if (["metaMask", "coinbaseWallet", "io.metamask", "com.coinbase.wallet", "injected"].includes(c.id)) continue;
+      if (["metaMask", "metaMaskSDK", "coinbaseWallet", "coinbaseWalletSDK", "io.metamask", "com.coinbase.wallet", "injected"].includes(c.id)) continue;
       if (out.some((r) => r.connector?.id === c.id)) continue;
       out.push({
         key: `connector:${c.id}`,
@@ -206,7 +231,14 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
 
   const handleConnect = async (row: WalletRow) => {
     if (!row.connector) {
-      setConnectError(`${row.name} is not available in this browser.`);
+      // Should not happen for a detected wallet after the connector
+      // lookup fix — if it does, it is a real wiring gap, not a missing
+      // wallet, so say so instead of blaming the browser.
+      setConnectError(
+        row.detected
+          ? `${row.name} was detected but no connector could be attached to it. Please refresh the page and try again.`
+          : `${row.name} is not available in this browser.`,
+      );
       return;
     }
     setConnectError(null);
