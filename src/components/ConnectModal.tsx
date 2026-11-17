@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useAccount, useConnect, useConnectors } from "wagmi";
 import type { Connector } from "wagmi";
 
@@ -221,7 +222,13 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
     }
   };
 
-  return (
+  // Render through a portal to document.body: the modal lives inside the
+  // sticky header, whose backdrop-blur masthead creates a containing block
+  // for fixed-position descendants — without the portal the modal was
+  // confined to the header's box, the ticker bar cut across it, and most
+  // of the panel was hidden behind the page. In the portal it is a true
+  // viewport overlay, centred, above everything.
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4"
       role="dialog"
@@ -306,6 +313,7 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
           this modal.
         </p>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
