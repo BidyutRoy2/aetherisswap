@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AMMORA_DATA_API_URL, GIWA_EXPLORER_URL, GIWA_RPC_URL, GIWA_SEPOLIA_CHAIN_ID, SDK_VERSION } from "@/lib/chain";
+import { AMMORA_DATA_API_URL, APP_VERSION, GIWA_EXPLORER_URL, GIWA_RPC_URL, GIWA_SEPOLIA_CHAIN_ID, SDK_VERSION } from "@/lib/chain";
 
 export function Footer() {
   return (
@@ -95,7 +95,7 @@ export function Footer() {
 
         {/* Ledger line + legal */}
         <div className="mt-10 flex flex-col gap-3 border-t border-[#1e2d26] pt-5 text-xs text-[#9fb3a8] sm:flex-row sm:items-center sm:justify-between">
-          <p className="mono-num">Æ AETHERIS RESEARCH · x.com/aetherisweb3 · COORD 23.81°N 90.41°E</p>
+          <p className="mono-num">Æ AETHERIS RESEARCH · x.com/aetherisweb3 · COORD 23.81°N 90.41°E · <span className="text-[#00d084]">v{APP_VERSION}</span></p>
           <p className="flex gap-4">
             <a className="hover:text-[#00d084]" href="https://x.com/aetherisweb3" target="_blank" rel="noreferrer">X</a>
             <a className="hover:text-[#00d084]" href="https://github.com/BidyutRoy2" target="_blank" rel="noreferrer">GitHub</a>

@@ -1,4 +1,5 @@
 import { defineChain } from "viem";
+import packageJson from "../../package.json";
 
 /**
  * GIWA Sepolia — the only chain AetherisSwap supports.
@@ -11,6 +12,9 @@ export const GIWA_EXPLORER_URL = "https://sepolia-explorer.giwa.io";
 export const AMMORA_DATA_API_URL =
   "https://ammora-giwa-sepolia-data.fly.dev";
 export const SDK_VERSION = "0.3.9";
+// Single source of truth: the version in package.json. Shown in the header
+// ribbon + footer so a live check can tell which build is deployed.
+export const APP_VERSION: string = packageJson.version;
 
 export const giwaSepolia = defineChain({
   id: GIWA_SEPOLIA_CHAIN_ID,

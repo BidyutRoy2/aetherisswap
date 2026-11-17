@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAccount, useChainId, useDisconnect, useSwitchChain } from "wagmi";
 import { ConnectModal } from "./ConnectModal";
 import { attestGiwaDeployment, getPublicClient, type AttestationState } from "@/lib/ammora";
-import { GIWA_SEPOLIA_CHAIN_ID, SDK_VERSION } from "@/lib/chain";
+import { GIWA_SEPOLIA_CHAIN_ID, APP_VERSION, SDK_VERSION } from "@/lib/chain";
 import { Ticker } from "./Ticker";
 
 const NAV = [
@@ -76,6 +76,8 @@ export function Header() {
             <span className="hidden md:inline">SDK {SDK_VERSION}</span>
             <span className="hidden md:inline text-[#24352c]">|</span>
             <span className="hidden md:inline">CHAIN {GIWA_SEPOLIA_CHAIN_ID}</span>
+            <span className="hidden md:inline text-[#24352c]">|</span>
+            <span className="hidden md:inline text-[#00d084]">v{APP_VERSION}</span>
           </span>
           <span className="hidden sm:flex items-center gap-3 shrink-0">
             <a className="hover:text-[#00d084]" href="https://docs.ammora.org" target="_blank" rel="noreferrer">
