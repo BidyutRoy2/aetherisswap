@@ -187,7 +187,18 @@ export function ConnectModal({ open, onClose }: { open: boolean; onClose: () => 
         });
       }
     }
-    return out;
+    // Dedupe by wallet name: wagmi can surface the same wallet through
+    // more than one connector (e.g. "metaMask" and the EIP-6963
+    // "io.metamask" connector), which rendered MetaMask/Coinbase twice
+    // in a clean browser — once "Not installed", once "Detected".
+    // Keep one row per wallet, preferring the detected one.
+    const deduped: WalletRow[] = [];
+    for (const row of out) {
+      const at = deduped.findIndex((r) => r.name.toLowerCase() === row.name.toLowerCase());
+      if (at === -1) deduped.push(row);
+      else if (row.detected && !deduped[at].detected) deduped[at] = row;
+    }
+    return deduped;
   }, [open, announced, connectors]);
 
   if (!open) return null;
