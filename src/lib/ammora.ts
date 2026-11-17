@@ -208,6 +208,17 @@ export interface LiveQuote {
     baseForQuote: boolean;
     fee: bigint;
   };
+  /**
+   * ALC path only — the curve quote's own partial-fill signal. The SDK
+   * invariant is amountIn(filled) + amountLeft === includedAmountIn:
+   * amountLeft > 0 means the curve cannot fill the entered amount in one
+   * swap, and planSwapExactInput with allowPartialFill:false refuses it
+   * ("DBC exact-input quote requires partial fill"). filledAmountIn is
+   * the input the curve CAN fill — the max for one full fill, derived
+   * from the live quote, never a per-token constant.
+   */
+  amountLeft?: bigint;
+  filledAmountIn?: bigint;
 }
 
 function alcQuoteFor(
@@ -235,8 +246,33 @@ function alcQuoteFor(
       quoteBlock: 0n,
       feeText: `curve fee ${q.fee.toString()} raw`,
       alc: { curve, tokenIn, tokenOut, amountIn, baseForQuote, fee: q.fee },
+      // Partial-fill signal, straight from the curve quote.
+      amountLeft: q.amountLeft,
+      filledAmountIn: q.amountIn,
     };
   });
+}
+
+/**
+ * Partial-fill info for an ALC quote, derived from the live quote only.
+ * Returns null when the quote fully fills (amountLeft is 0) or when the
+ * quote is not an ALC quote. The max that CAN fill in one swap is the
+ * quote's filled amount — a live, per-pair figure, never a hardcoded
+ * per-token constant, so it works for any token, not just $VTRS.
+ */
+export function partialFillInfo(live: LiveQuote): {
+  maxFullFill: bigint;
+  payToken: SwapToken;
+  receiveToken: SwapToken;
+} | null {
+  if (live.kind !== "alc" || !live.alc || live.amountLeft === undefined || live.amountLeft <= 0n) {
+    return null;
+  }
+  return {
+    maxFullFill: live.filledAmountIn ?? 0n,
+    payToken: live.alc.tokenIn,
+    receiveToken: live.alc.tokenOut,
+  };
 }
 
 /**
@@ -311,6 +347,46 @@ async function approveIfNeeded(
     chain: giwaSepolia,
   });
   await publicClient.waitForTransactionReceipt({ hash });
+}
+
+/**
+ * Read-only feasibility check: prove the quoted swap can be planned BEFORE
+ * any wrap or approval is attempted. Runs the exact plan step
+ * executeQuotedSwap would run (ALC planSwapExactInput / route
+ * prepareExactIn) and discards the result — it never signs or sends.
+ * Throws the SDK's own error when the plan would refuse (factory refusal,
+ * partial fill, stale quote), so the caller can show the failure without
+ * having wrapped ETH first.
+ */
+export async function assertSwapPlannable(
+  live: LiveQuote,
+  payer: Address,
+  slippageBps: number,
+): Promise<void> {
+  const publicClient = getPublicClient();
+  if (live.kind === "alc" && live.alc) {
+    const { curve, amountIn, baseForQuote } = live.alc;
+    const alc = new ALCClient(publicClient, curve);
+    const deadline = BigInt(Math.floor(Date.now() / 1000) + 1800);
+    await alc.planSwapExactInput({
+      includedAmountIn: amountIn,
+      baseForQuote,
+      allowPartialFill: false,
+      slippageBps,
+      recipient: payer,
+      deadline,
+    });
+    return;
+  }
+  if (live.kind === "route" && live.routeQuote) {
+    const routeClient = await getRouteClient(publicClient);
+    await routeClient.prepareExactIn(live.routeQuote, {
+      payer,
+      funding: { kind: "direct-approval" },
+    });
+    return;
+  }
+  throw new Error("Quote is missing its execution plan");
 }
 
 /**

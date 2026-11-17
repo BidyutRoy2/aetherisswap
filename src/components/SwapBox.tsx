@@ -17,7 +17,7 @@ import {
   useWalletClient,
 } from "wagmi";
 import { useQueryClient } from "@tanstack/react-query";
-import { describeNoRoute, discoverCurveForToken, executeQuotedSwap, fetchLiveQuote, getPublicClient as getAmmoraPublicClient, verifyCurveForToken, type LiveQuote } from "@/lib/ammora";
+import { assertSwapPlannable, describeNoRoute, discoverCurveForToken, executeQuotedSwap, fetchLiveQuote, getPublicClient as getAmmoraPublicClient, partialFillInfo, verifyCurveForToken, type LiveQuote } from "@/lib/ammora";
 import { explorerTxUrl, GIWA_SEPOLIA_CHAIN_ID, giwaSepolia } from "@/lib/chain";
 import { AIV4C_TOKEN, formatUnitsAmount, KNOWN_TOKENS, NATIVE_ETH_TOKEN, shortAddress, WETH_ADDRESS, WETH_TOKEN, type SwapToken } from "@/lib/tokens";
 import { getDataApiClient } from "@/lib/ammora";
@@ -26,6 +26,7 @@ type SwapPhase =
   | "idle"
   | "quoting"
   | "ready"
+  | "checking"
   | "wrapping"
   | "approving"
   | "swapping"
@@ -166,6 +167,22 @@ export function SwapBox() {
     };
   }, [amountInRaw, tokenIn, tokenOut, quoteTokenIn, slippageBps, address]);
 
+  // Partial fill, from the live ALC quote itself: amountLeft > 0 means the
+  // curve cannot fill the entered amount in one swap, and the plan (with
+  // allowPartialFill: false) will refuse it. The max that CAN fill is the
+  // quote's filled amount — derived live per pair, never a per-token
+  // constant, so this guard works for any token, not just $VTRS.
+  // (formatUnitsAmount truncates, so the displayed max never exceeds the
+  // true fillable amount — entering it will fully fill.)
+  const partialFill = useMemo(() => (quote ? partialFillInfo(quote) : null), [quote]);
+  const isPartialFill = partialFill !== null;
+  const partialFillMaxText = partialFill
+    ? `${formatUnitsAmount(partialFill.maxFullFill, partialFill.payToken.decimals)} ${partialFill.payToken.symbol}`
+    : "";
+  const partialFillMessage = partialFill
+    ? `This amount is too large for one full fill — the ${partialFill.receiveToken.symbol} curve can only fill ≈ ${partialFillMaxText} in a single swap, and the swap refuses partial fills. Enter ${partialFillMaxText} or less.${isEthIn ? " (Same amount in ETH — it wraps 1:1.)" : ""}`
+    : null;
+
   const flip = useCallback(() => {
     if (!tokenOut) return;
     // ETH is pay-only: flipping from ETH would put ETH on the receive side.
@@ -296,19 +313,38 @@ export function SwapBox() {
 
   const doSwap = useCallback(async () => {
     if (!quote || !address || !walletClient || !tokenOut || !amountInRaw) return;
-    setPhase(isEthIn ? "wrapping" : "swapping");
+    // Guard 1: the live quote says this amount can only partially fill,
+    // and the plan refuses partial fills. Never wrap or send — the amount
+    // itself is the problem, and the banner above states the max that fits.
+    if (isPartialFill && partialFillMessage) {
+      setPhase("error");
+      setMessage(partialFillMessage);
+      return;
+    }
     setMessage(null);
     setTxHash(null);
     setWrapTxHash(null);
     let wrappedHash: `0x${string}` | null = null;
     try {
-      // ETH pay path: wrap the exact amount 1:1 first and wait for the
-      // receipt. If the wrap fails, the swap is NOT attempted — and if the
-      // wrap succeeds but the swap then fails, the message says exactly
-      // that (never "swap succeeded" when only the wrap did).
+      // ETH pay path: prove the swap can be planned BEFORE wrapping. A
+      // failed plan (factory refusal, partial fill, stale quote) must
+      // never cost the user a wrap transaction — that is exactly how the
+      // old flow produced "Wrap succeeded but the swap failed".
       if (isEthIn) {
+        setPhase("checking");
+        try {
+          await assertSwapPlannable(quote, address, slippageBps);
+        } catch (planError) {
+          setPhase("error");
+          const msg = planError instanceof Error ? planError.message : "Swap cannot be planned.";
+          setMessage(`Swap cannot proceed, so nothing was wrapped: ${msg.slice(0, 220)}`);
+          return;
+        }
+        setPhase("wrapping");
         wrappedHash = await wrapExact(amountInRaw);
         setWrapTxHash(wrappedHash);
+        setPhase("swapping");
+      } else {
         setPhase("swapping");
       }
       // Approval (only if the plan requires it) + plan + send all happen
@@ -333,7 +369,7 @@ export function SwapBox() {
             : `Swap failed: ${msg.slice(0, 260)}`,
       );
     }
-  }, [quote, address, walletClient, tokenOut, amountInRaw, slippageBps, isEthIn, wrapExact, queryClient]);
+  }, [quote, address, walletClient, tokenOut, amountInRaw, slippageBps, isEthIn, wrapExact, queryClient, isPartialFill, partialFillMessage]);
 
   const swapDisabledReason = !isConnected
     ? "Connect your wallet to swap"
@@ -345,17 +381,23 @@ export function SwapBox() {
           ? "Enter an amount"
           : phase === "quoting"
             ? "Getting a live quote…"
-            : phase === "wrapping"
-              ? "Wrapping ETH → WETH…"
-              : phase === "approving"
-                ? "Approve in your wallet…"
-                : phase === "swapping"
-                  ? "Confirm the swap in your wallet…"
-                  : isEthIn && ethBalance && ethBalance.value < amountInRaw
-                    ? "Not enough ETH for this amount + gas"
-                    : !isEthIn && tokenIn.address === WETH_ADDRESS && typeof wethBalance === "bigint" && wethBalance === 0n
-                      ? "No WETH — wrap ETH first"
-                      : null;
+            : isPartialFill
+              ? `Too large for one full fill — max ≈ ${partialFillMaxText}`
+              : !quote && phase === "error"
+                ? "No live route for this pair"
+                : phase === "checking"
+                  ? "Checking the swap can proceed…"
+                  : phase === "wrapping"
+                    ? "Wrapping ETH → WETH…"
+                    : phase === "approving"
+                      ? "Approve in your wallet…"
+                      : phase === "swapping"
+                        ? "Confirm the swap in your wallet…"
+                        : isEthIn && ethBalance && ethBalance.value < amountInRaw
+                          ? "Not enough ETH for this amount + gas"
+                          : !isEthIn && tokenIn.address === WETH_ADDRESS && typeof wethBalance === "bigint" && wethBalance === 0n
+                            ? "No WETH — wrap ETH first"
+                            : null;
 
   // Plain-language hint when the user has ETH but no WETH and tries to pay
   // in WETH: the swap cannot run on a zero spend balance.
@@ -549,6 +591,14 @@ export function SwapBox() {
         </p>
       )}
 
+      {/* Amount too large for one full fill (live quote's amountLeft > 0):
+          the Swap button below is disabled until the amount is lowered. */}
+      {isPartialFill && partialFillMessage && (
+        <p className="mt-3 rounded-xl border border-[#ffc24b]/40 bg-[#ffc24b]/5 px-3 py-2.5 text-sm text-[#ffc24b]">
+          {partialFillMessage}
+        </p>
+      )}
+
       {/* Paying with ETH: wrap-first is automatic. */}
       {isEthIn && amountInRaw && (
         <p className="mt-3 rounded-xl border border-[#1e2d26] bg-[#111a16] px-3 py-2.5 text-sm text-[#9fb3a8]">
@@ -573,7 +623,7 @@ export function SwapBox() {
         <button
           type="button"
           onClick={doSwap}
-          disabled={Boolean(swapDisabledReason) || phase === "swapping" || phase === "wrapping" || phase === "approving"}
+          disabled={Boolean(swapDisabledReason) || phase === "swapping" || phase === "wrapping" || phase === "checking" || phase === "approving"}
           className="btn-primary mt-4 w-full px-4 py-3.5 text-base"
         >
           {swapDisabledReason ?? (quote ? `Swap ${tokenIn.symbol} → ${tokenOut?.symbol ?? ""}${isEthIn ? " (wraps ETH first)" : ""}` : "Swap")}
