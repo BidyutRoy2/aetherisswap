@@ -107,6 +107,15 @@ Reward is a bonus draw for approved builders ($tAMM + SBT) — not guaranteed.
   step failed. The standalone Wrap row does the same wrap and refreshes
   balances without a reload. A WETH balance of 0 with a WETH amount entered
   shows an explicit "wrap ETH → WETH first" hint.
+- **First swappable token: $VTRS (v0.1.8).** AIV4C can be quoted but never
+  planned — its curve was created by the auto-route factory, while
+  `ALCClient.planSwapExactInput` requires a curve from the SDK-reviewed
+  sealed factory (`0x42ac…0a2`). $VTRS ("Voltaris", 9 decimals,
+  `0xb2c4…3bd0`, curve `0xa837…9Eff`, launched block 41,525,106) is a
+  sealed-factory launch and `planSwapExactInput` accepts it at 0.00001 WETH
+  (~4,925 $VTRS out). Keep buys at or below 0.00001 WETH — above ~0.00001009
+  WETH the quote partially fills and the plan refuses. Selling $VTRS back
+  does not work yet: the curve holds no WETH reserves until buys happen.
 - `discoverPools` log scans are slow on the public RPC (a 500k-block window
   did not finish in ~150s, and 0 pools in the last 2,000 blocks); the app
   does not call it on load. Token discovery goes through the Data API, plus

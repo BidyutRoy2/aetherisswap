@@ -49,6 +49,37 @@ export const AIV4C_TOKEN: SwapToken = {
 };
 
 /**
+ * $VTRS — "Voltaris", the first token proven swappable end-to-end on this
+ * exchange (verified live 2026-11-18, blocks 41,611,178–41,611,265).
+ * LaunchCreated on the SDK-reviewed sealed factory
+ * 0x42acd2531e47ea789c03915c9de195bf6250c0a2 at block 41,525,106
+ * (curveForToken + tokenForCurve both match on that factory — the check
+ * ALCClient.planSwapExactInput enforces). 9 decimals, totalSupply 7,500 $VTRS.
+ * Route quote fails (no reviewed route) so the app falls back to the ALC
+ * direct quote, and planSwapExactInput ACCEPTS with the app's exact call
+ * shape (allowPartialFill:false) at 0.00001 WETH (minOut ~4,925,125,628,140
+ * raw ≈ 4,925.13 $VTRS). Max full-fill buy ≈ 0.00001009 WETH — above that
+ * the quote partially fills and the plan refuses ("DBC exact-input quote
+ * requires partial fill"), so keep buys at or below 0.00001 WETH.
+ * Sell side does not work yet: the curve holds no WETH reserves
+ * (quoteReserve 0), so a sell quote reverts until buys have happened.
+ */
+export const VTRS_ADDRESS =
+  "0xb2c47362C7dE0364882294CdFa7CA0A94F1e3bd0" as Address;
+export const VTRS_CURVE =
+  "0xa837EB660DCC3B707da451e35DC331A2c40e9Eff" as Address;
+
+export const VTRS_TOKEN: SwapToken = {
+  address: VTRS_ADDRESS,
+  symbol: "$VTRS",
+  name: "Voltaris",
+  decimals: 9,
+  source: "ammora-launch",
+  curve: VTRS_CURVE,
+  status: "sealed-factory launch",
+};
+
+/**
  * Native ETH is the pay-only token: gas and spend are separate balances,
  * so ETH itself is never a swap output — it is wrapped 1:1 into WETH
  * (deposit()) first, then the normal WETH swap runs. Added as a pay token
@@ -69,7 +100,7 @@ export const NATIVE_ETH_TOKEN: SwapToken = {
  * ETH pays gas; WETH is the ERC-20 spend balance. The UI shows both and only
  * offers wrapping (WETH deposit()) when the user explicitly asks.
  */
-export const KNOWN_TOKENS: SwapToken[] = [WETH_TOKEN, AIV4C_TOKEN];
+export const KNOWN_TOKENS: SwapToken[] = [WETH_TOKEN, AIV4C_TOKEN, VTRS_TOKEN];
 
 export function shortAddress(address: string): string {
   return `${address.slice(0, 6)}…${address.slice(-4)}`;
