@@ -10,7 +10,7 @@ A testnet exchange on **GIWA Sepolia** (chain ID `91342`) built with the
 
 ## What it does
 
-- **Swap terminal** — connect a wallet (RainbowKit), pick tokens, get a live
+- **Swap terminal** — connect a wallet (custom wagmi modal — no WalletConnect project ID needed), pick tokens, get a live
   quote from `AmmoraRouteClient.quoteExactIn`, then approve (only if the route
   requires it) and execute. The SDK plans; your wallet signs. Every swap ends
   with a GIWA Explorer link.

@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useEffect, useState } from "react";
-import { useAccount, useChainId } from "wagmi";
+import { useEffect, useRef, useState } from "react";
+import { useAccount, useChainId, useDisconnect, useSwitchChain } from "wagmi";
+import { ConnectModal } from "./ConnectModal";
 import { attestGiwaDeployment, getPublicClient, type AttestationState } from "@/lib/ammora";
 import { GIWA_SEPOLIA_CHAIN_ID, SDK_VERSION } from "@/lib/chain";
 import { Ticker } from "./Ticker";
@@ -18,7 +18,13 @@ const NAV = [
 export function Header() {
   const pathname = usePathname();
   const chainId = useChainId();
-  const { isConnected } = useAccount();
+  const { address, isConnected } = useAccount();
+  const { disconnect } = useDisconnect();
+  const { switchChain, isPending: isSwitching } = useSwitchChain();
+  const [connectOpen, setConnectOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
   const [attestation, setAttestation] = useState<AttestationState>({ status: "idle" });
   const [block, setBlock] = useState<bigint | null>(null);
 
@@ -39,7 +45,18 @@ export function Header() {
     };
   }, []);
 
+  // Close the connected-wallet menu on outside click.
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [menuOpen]);
+
   const onGiwa = chainId === GIWA_SEPOLIA_CHAIN_ID;
+  const shortAddress = address ? `${address.slice(0, 6)}…${address.slice(-4)}` : "";
 
   return (
     <header className="sticky top-0 z-40">
@@ -127,7 +144,69 @@ export function Header() {
             <span className="hidden xl:inline text-[11px] mono-num text-[#9fb3a8]">
               #{block ? block.toString() : "…"}
             </span>
-            <ConnectButton chainStatus="icon" showBalance={false} accountStatus="address" />
+            {isConnected && !onGiwa && (
+              <button
+                type="button"
+                onClick={() => switchChain?.({ chainId: GIWA_SEPOLIA_CHAIN_ID })}
+                disabled={isSwitching}
+                className="hidden sm:inline-flex rounded-full border border-[#ffc24b]/60 bg-[#ffc24b]/10 px-2.5 py-1 text-[11px] mono-num font-semibold text-[#ffc24b] disabled:opacity-40"
+              >
+                {isSwitching ? "Switching…" : "Switch to GIWA 91342"}
+              </button>
+            )}
+            {isConnected && address ? (
+              <div className="relative" ref={menuRef}>
+                <button
+                  type="button"
+                  onClick={() => setMenuOpen((v) => !v)}
+                  aria-expanded={menuOpen}
+                  className="btn-ghost flex items-center gap-2 px-3 py-2 text-sm font-semibold"
+                >
+                  <span className="h-2 w-2 rounded-full bg-[#00d084]" aria-hidden />
+                  <span className="mono-num">{shortAddress}</span>
+                </button>
+                {menuOpen && (
+                  <div className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-[#1e2d26] bg-[#0d1512] p-2 shadow-2xl">
+                    <p className="break-all px-2 py-1.5 text-xs mono-num text-[#9fb3a8]">{address}</p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard?.writeText(address).then(() => {
+                          setCopied(true);
+                          setTimeout(() => setCopied(false), 1500);
+                        });
+                      }}
+                      className="block w-full rounded-lg px-2 py-2 text-left text-sm hover:bg-[#111a16]"
+                    >
+                      {copied ? "Copied ✓" : "Copy address"}
+                    </button>
+                    <a
+                      href={`https://sepolia-explorer.giwa.io/address/${address}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="block rounded-lg px-2 py-2 text-sm hover:bg-[#111a16]"
+                    >
+                      View on Explorer ↗
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setMenuOpen(false);
+                        disconnect();
+                      }}
+                      className="block w-full rounded-lg px-2 py-2 text-left text-sm text-red-300 hover:bg-[#111a16]"
+                    >
+                      Disconnect
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <button type="button" onClick={() => setConnectOpen(true)} className="btn-primary px-3 sm:px-4 py-2 text-sm">
+                Connect Wallet
+              </button>
+            )}
+            <ConnectModal open={connectOpen} onClose={() => setConnectOpen(false)} />
           </div>
         </div>
 

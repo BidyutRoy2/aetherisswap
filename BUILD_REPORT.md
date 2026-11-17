@@ -3,6 +3,12 @@
 **Date:** 2026-11-18 (Dhaka) · **Repo target:** `BidyutRoy2/aetherisswap` (not pushed — owner uploads)
 **Stack:** Next.js 15.5 (App Router) + React 19 + strict TypeScript 5.9 + Tailwind 3.4 + viem 2.38 + wagmi 2.18 + RainbowKit 2.2.9 + `@ammora-protocol/sdk@0.3.9` (exact) + `@ammora-protocol/math@0.3.0` · Node 24 · **Cost: $0** (GitHub public + Vercel free, no domain, no paid RPC/API, no secrets committed)
 
+## v0.1.2 — custom wagmi Connect modal (2026-11-18 04:17 Dhaka)
+
+**Problem (verified live):** in a clean browser the RainbowKit "Connect a Wallet" modal was empty — no MetaMask, no Coinbase. RainbowKit v2 only lists wallets from `connectorsForWallets`/`getDefaultConfig`, which need a WalletConnect/Reown project ID; raw wagmi connectors were not mapped to its wallet entries.
+**Fix:** removed RainbowKit entirely (provider, ConnectButton, dependency + lockfile entry). New `src/components/ConnectModal.tsx` lists wagmi connectors directly: MetaMask and Coinbase Wallet always appear (with an official Install link when not detected), plus EIP-6963-discovered wallets (Rabby, Phantom, Keplr, …) via `eip6963:announceProvider` + wagmi discovery. Connect failures surface the connector's real error. Header now shows truncated address + Copy/Explorer/Disconnect menu and a "Switch to GIWA 91342" button on the wrong chain. **No WalletConnect, no project ID, no fake entries.** Live repo: `BidyutRoy2/aetherisswap` main; live site: https://aetherisswap.vercel.app (Vercel auto-deploys from main). **Not verified live:** a real wallet connection — no wallet is available on this VM; the user must confirm Connect works in their browser.
+
+
 ## What was built
 
 - **Swap terminal (`/`)** — RainbowKit connect, network guard for GIWA Sepolia (91342) with Switch button, From/To token select, amount input, live SDK quote (price, min received, fee, provider), slippage 50/100/300 bps (default 100), ETH (gas) vs WETH (spend) shown separately, Wrap ETH→WETH (`deposit()`) on request, approval tx first if the route needs it, then swap tx, explorer link on success. Wallet disconnected = swap disabled with the exact reason. Custom token by address (on-chain ERC-20 read: symbol/decimals). Default pair: WETH → AIV4C.
@@ -11,7 +17,7 @@
 - **Header / footer** — approved "Observatory" design (ink / emerald `#00D084` / amber `#FFC24B`, Fraunces headlines, IBM Plex Mono numbers, no purple gradient): dark ribbon (live attestation status, SDK 0.3.9, chain 91342, Docs/Explorer/Mission), Æ logo + BETA badge, numbered nav 01 Swap / 02 Tokens / 03 Activity, gas pill, chain selector, masked scrolling ticker; dark "Observatory Ledger" footer with CTA headline, System Status cards, 4-column links (Exchange / Protocol / Developers / Network), social links, testnet disclaimer.
 - **Two-tier quoting (`src/lib/ammora.ts`)** — `AmmoraRouteClient` first (with `verificationBlock`, per SDK requirement for atomic multi-hop routing); on "no reviewed route", direct ALC quote fallback (`ALCClient.quoteExactInput`). Execution: route path via `prepareExactIn` + `execute`; ALC path via `planSwapExactInput` + approval + `walletClient.sendTransaction`. SDK refusals are surfaced with the SDK's own message — never faked.
 - **Runtime verification** — the app verifies the SDK-pinned runtime code hashes (`giwaSepoliaAutoRouteRuntimeHashes`) against live `eth_getCode` on GIWA Sepolia at bootstrap (5 pins, staggered 650 ms for the public-RPC rate limit), shown in the ribbon. `attestAmmoraDeployment()` needs a reviewed release manifest that is not bundled with the npm package, so this is the equivalent direct check.
-- **WalletConnect is optional** — if `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` is unset, the app uses injected wallets only (MetaMask / Rabby) and never calls WalletConnect's cloud config.
+- **WalletConnect is gone (v0.1.2)** — the custom wagmi modal lists MetaMask, Coinbase Wallet and injected wallets with no project ID at all. No WalletConnect cloud call is made anywhere.
 
 ## Files
 
@@ -36,7 +42,7 @@
 
 - No live swap has been proven end-to-end for any pair from this VM. No graduation, mainnet, or live trading is claimed.
 - The Tokens/Activity pages depend on the Data API; if it stays unreachable after deploy, they keep showing their honest error state — the swap terminal still works via paste-by-address.
-- WalletConnect needs a real project ID (free at cloud.reown.com) for non-injected wallets; without it only injected wallets (MetaMask/Rabby) connect.
+- No WalletConnect project ID is used or needed (v0.1.2); the Connect modal lists MetaMask, Coinbase Wallet and injected wallets directly.
 - Google Fonts are loaded via `next/font/google`; in offline/sandbox browsers they fall back to system serif/sans — no breakage, just a different face.
 
 ## Next steps for the user
